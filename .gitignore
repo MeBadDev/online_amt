@@ -1,3 +1,6 @@
 .DS_Store
 *.pyc
 venv/
+.python-version
+__pycache__/
+*.onnx
