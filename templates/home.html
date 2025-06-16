@@ -6,6 +6,19 @@
 </canvas>
 </div>
 
+<!-- Note Display Panel -->
+<div id="note-panel" style="position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 15px; border-radius: 10px; font-family: monospace; min-width: 200px;">
+  <h3 style="margin: 0 0 10px 0; color: #FDC789;">Active Notes</h3>
+  <div id="active-notes" style="font-size: 14px; line-height: 1.4;">
+    <div style="color: #ccc;">Listening...</div>
+  </div>
+  <div style="margin-top: 15px;">
+    <h4 style="margin: 0 0 5px 0; color: #C4DF9B; font-size: 12px;">Recent Events</h4>
+    <div id="note-history" style="font-size: 11px; color: #aaa; max-height: 100px; overflow-y: auto;">
+    </div>
+  </div>
+</div>
+
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
 <script>
   c = document.getElementById("canvas");
@@ -47,6 +60,51 @@
         }
       });
    }, 16);
+  
+  // Note visualization update
+  function noteToName(noteNum) {
+    const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const octave = Math.floor((noteNum + 21) / 12);
+    const note = notes[(noteNum + 21) % 12];
+    return `${note}${octave}`;
+  }
+  
+  function getColorForNote(noteNum) {
+    const colors = [
+      "#F69799", "#6ECFF5", "#FDC789", "#8781BD", "#C4DF9B", "#F39AC1",
+      "#7ACCC8", "#F9AD81", "#7CA6D8", "#DAD381", "#BC8CBF", "#82CA9C"
+    ];
+    return colors[noteNum % 12];
+  }
+  
+  setInterval(function(){ 
+    $.getJSON("_notes",
+    function(data) {
+      // Update active notes display
+      const activeNotesDiv = document.getElementById('active-notes');
+      if (data.active_notes.length > 0) {
+        const noteElements = data.active_notes.sort((a, b) => b - a).map(note => {
+          const noteName = noteToName(note);
+          const color = getColorForNote(note);
+          return `<span style="background: ${color}; color: black; padding: 2px 6px; margin: 2px; border-radius: 4px; display: inline-block;">${noteName}</span>`;
+        });
+        activeNotesDiv.innerHTML = noteElements.join('');
+      } else {
+        activeNotesDiv.innerHTML = '<div style="color: #666;">(silent)</div>';
+      }
+      
+      // Update note history
+      const historyDiv = document.getElementById('note-history');
+      if (data.note_history.length > 0) {
+        const historyElements = data.note_history.slice(-10).reverse().map(event => {
+          const symbol = event.type === 'onset' ? '▶' : '⏹';
+          const color = event.type === 'onset' ? '#7FFF00' : '#FF6B6B';
+          return `<div style="color: ${color};">${symbol} ${event.note_name}</div>`;
+        });
+        historyDiv.innerHTML = historyElements.join('');
+      }
+    });
+   }, 100); // Update note display more frequently
   
   
   function make_gradient(rect){
