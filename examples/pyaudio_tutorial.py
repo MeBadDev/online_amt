@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from transcribe import load_model, OnlineTranscriber
 
 import matplotlib
@@ -9,7 +13,6 @@ import matplotlib.pyplot as plt
 import time
 import argparse
 from mic_stream import MicrophoneStream
-import rtmidi
 
 CHUNK = 512
 FORMAT = pyaudio.paInt16
@@ -20,14 +23,6 @@ WAVE_OUTPUT_FILENAME = "output.wav"
 
 
 def main(args):
-    midiout = rtmidi.MidiOut()
-    available_ports = midiout.get_ports()
-    if available_ports:
-        midiout.open_port(0)
-    else:
-        midiout.open_virtual_port("My virtual output")
-
-
     stream = MicrophoneStream(RATE, CHUNK, CHANNELS)
     model = load_model(args.model_file)
     transcriber = OnlineTranscriber(model, return_roll=False)
@@ -61,12 +56,15 @@ def main(args):
             onset, offset = transcriber.inference(decoded)
             time_b = time.time()
             for pitch in onset:
-                note_on = [0x90, pitch + 21, 64]
-                midiout.send_message(note_on)
+                note_name = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][pitch % 12]
+                octave = (pitch + 21) // 12
+                print(f"Note ON: {note_name}{octave} (MIDI {pitch + 21})")
             for pitch in offset:
-                note_off = [0x90, pitch + 21, 0]
-                midiout.send_message(note_off)
-            print(onset)
+                note_name = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][pitch % 12]
+                octave = (pitch + 21) // 12
+                print(f"Note OFF: {note_name}{octave} (MIDI {pitch + 21})")
+            if onset:
+                print(f"Active notes: {onset}")
         stream.closed = True
     print("* done recording")
 

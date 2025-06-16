@@ -42,7 +42,17 @@ After the page is opened, the AMT model will automatically run until a keyboard 
 
 
 #### With a matplotlib visualization
-```$ python run_on_plt.py ```
+```$ python examples/run_on_plt.py ```
+
+## Examples
+
+The `examples/` directory contains various example scripts demonstrating different aspects of the transcription system:
+
+- `pyaudio_tutorial.py` - Basic PyAudio and transcription tutorial
+- `pyplot_test.py` - Matplotlib real-time plotting test
+- `run_on_plt.py` - Matplotlib-based transcription runner
+
+See `examples/README.md` for detailed information about each example.
 
 
 

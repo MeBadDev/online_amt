@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from transcribe import load_model, OnlineTranscriber
 import matplotlib
 matplotlib.use('Qt5Agg')
