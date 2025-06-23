@@ -8,7 +8,6 @@ import math
 
 import torch as th
 import torch.nn.functional as F
-import numpy as np
 
 from autoregressive import models
 from autoregressive.mel import MelSpectrogram
@@ -30,7 +29,7 @@ class OnlineTranscriber:
         self.audio_buffer = th.zeros((1,5120)).to(th.float)
         self.mel_buffer = model.melspectrogram(self.audio_buffer)
         self.acoustic_layer_outputs = self.init_acoustic_layer(self.mel_buffer)
-        self.hidden = model.init_lstm_hidden(1, torch.device('cpu'))
+        self.hidden = model.init_lstm_hidden(1, th.device('cpu'))
         # self.hidden = model.init_hidden()
 
         self.prev_output = th.zeros((1,1,88)).to(th.long)
@@ -116,21 +115,27 @@ class OnlineTranscriber:
             #     time_list[5]-time_list[0], time_list[1]-time_list[0], time_list[2]-time_list[1], time_list[3]-time_list[2], time_list[4]-time_list[3],
             #     time_list[5]-time_list[4],  
             # ))
-            out = self.prev_output[0,0,:].numpy()
+            out = self.prev_output[0,0,:]
         if self.return_roll:
-            return (out == 2) + (out == 3)
+            # Use PyTorch operations instead of NumPy
+            return ((out == 2) + (out == 3)).tolist()
             # return (out==2) +  (out==4)
         else: # return onset and offset only
-            out[out==4]=3
+            # Replace with PyTorch operations
+            out_clone = out.clone()
+            out_clone[out_clone == 4] = 3
+            # out[out==4]=3
             # out[out==4]=2
-            onset_pitches = np.squeeze(np.argwhere(out == 3)).tolist()
-            off_pitches = np.squeeze(np.argwhere(out == 1)).tolist()
-            if isinstance(onset_pitches, int):
-                onset_pitches = [onset_pitches]
-            if isinstance(off_pitches, int):
-                off_pitches = [off_pitches]
-            # print('after', onset_pitches, off_pitches)
-            return onset_pitches, off_pitches
+            onset_indices = th.nonzero(out_clone == 3, as_tuple=False).squeeze(-1).tolist()
+            off_indices = th.nonzero(out_clone == 1, as_tuple=False).squeeze(-1).tolist()
+            
+            # Handle the case when there's only one index
+            if isinstance(onset_indices, int):
+                onset_indices = [onset_indices]
+            if isinstance(off_indices, int):
+                off_indices = [off_indices]
+                
+            return onset_indices, off_indices
         # return acoustic_out[:,3:4,:].numpy()
 
 
@@ -140,6 +145,24 @@ def load_model(filename):
                             88,
                             parameters['model_complexity_conv'],
                             parameters['model_complexity_lstm'])
-
-    model.load_state_dict(parameters['model_state_dict'])
+    
+    # Create a new state dict with only the keys that match the current model
+    new_state_dict = {}
+    model_state_dict = model.state_dict()
+    for key, value in parameters['model_state_dict'].items():
+        # Skip the problematic melspectrogram components
+        if key.startswith('melspectrogram.stft.forward_basis') or key.startswith('melspectrogram.stft.window'):
+            print(f"Skipping {key} as it's a problematic melspectrogram component")
+            continue
+            
+        if key in model_state_dict:
+            if model_state_dict[key].shape == value.shape:
+                new_state_dict[key] = value
+            else:
+                print(f"Skipping {key} due to shape mismatch: {model_state_dict[key].shape} vs {value.shape}")
+        else:
+            print(f"Skipping {key} as it's not in the current model")
+    
+    # Load the filtered state dict
+    model.load_state_dict(new_state_dict, strict=False)
     return model

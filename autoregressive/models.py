@@ -1,4 +1,5 @@
 
+from typing import Optional
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -77,17 +78,28 @@ class AR_Transcriber(nn.Module):
             N_MELS, SAMPLE_RATE, WINDOW_LENGTH, HOP_LENGTH, mel_fmin=MEL_FMIN, mel_fmax=MEL_FMAX)
         
 
-    def forward(self, mel, gt_label=False): 
+    
+    def forward(self, mel: torch.Tensor, gt_label: torch.Tensor = torch.zeros(0)):
+        """Forward pass of the model.
+        Args:
+            mel: Input mel spectrogram [batch_size, time, features]
+            gt_label: Ground truth labels or empty tensor for inference
+        """
         acoustic_out = self.acoustic_model(mel)
-        if not isinstance(gt_label, bool):
-            prev_gt = torch.cat((torch.zeros((gt_label.shape[0], 1, gt_label.shape[2]), device=mel.device, dtype=torch.long), gt_label[:, :-1, :].type(torch.LongTensor).to(mel.device)), dim=1)
-            concated_data = torch.cat((acoustic_out, self.class_embedding(prev_gt).view(mel.shape[0], -1, 88 * 2)), dim=2) # [1 640 944]
-            result, _= self.language_model(concated_data) # [1, 640, 1536], [1, 1, 1536], [1, 1, 1536]
-            total_result = self.language_post(result).view(mel.shape[0], -1, 88, 5) # [1, 640, 88, 5]
-        else:
-            h, c= self.init_lstm_hidden(mel.shape[0], mel.device)
-            prev_out =  torch.zeros((mel.shape[0], 1, 88*2)).to(mel.device)
-            total_result = torch.zeros((mel.shape[0], mel.shape[1], 88 )).to(mel.device)
+        device = mel.device if isinstance(mel.device, torch.device) else torch.device(mel.device)
+        
+        if gt_label.numel() > 0:  # Training mode with ground truth
+            prev_gt = torch.cat((
+                torch.zeros((gt_label.shape[0], 1, gt_label.shape[2]), device=device, dtype=torch.long),
+                gt_label[:, :-1, :].long().to(device)
+            ), dim=1)
+            concated_data = torch.cat((acoustic_out, self.class_embedding(prev_gt).view(mel.shape[0], -1, 88 * 2)), dim=2)
+            result, _ = self.language_model(concated_data)
+            total_result = self.language_post(result).view(mel.shape[0], -1, 88, 5)
+        else:  # Inference mode
+            h, c = self.init_lstm_hidden(mel.shape[0], device)
+            prev_out = torch.zeros((mel.shape[0], 1, 88*2), dtype=torch.float32, device=device)
+            total_result = torch.zeros((mel.shape[0], mel.shape[1], 88), dtype=torch.float32, device=device)
             for i in range(acoustic_out.shape[1]):
                 current_data = torch.cat((acoustic_out[:,i:i+1,:], prev_out), dim=2)
                 current_out, (h, c) = self.language_model(current_data, (h, c))
@@ -97,7 +109,6 @@ class AR_Transcriber(nn.Module):
                 current_out = torch.argmax(current_out, dim=3)
                 prev_out = self.class_embedding(current_out).view(mel.shape[0], 1, 88*2)
                 total_result[:,i:i+1,:] = current_out
-            
         return total_result
 
     def lm_model_step(self, acoustic_out, hidden, prev_out):
@@ -115,7 +126,7 @@ class AR_Transcriber(nn.Module):
         return current_out, hidden
 
 
-    def init_lstm_hidden(self, batch_size, device):
-        h = torch.zeros(2, batch_size, self.language_hidden_size, device=device)
-        c = torch.zeros(2, batch_size, self.language_hidden_size, device=device)
+    def init_lstm_hidden(self, batch_size: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+        h = torch.zeros(2, batch_size, self.language_hidden_size, dtype=torch.float32, device=device)
+        c = torch.zeros(2, batch_size, self.language_hidden_size, dtype=torch.float32, device=device)
         return (h, c)
